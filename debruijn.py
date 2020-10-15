@@ -20,6 +20,7 @@ from operator import itemgetter
 import networkx as nx
 import matplotlib
 import matplotlib.pyplot as plt
+import pickle
 matplotlib.use('Agg')
 random.seed(9001)
 
@@ -86,8 +87,6 @@ def read_fastq(fastq_file):
 
 Sequences = read_fastq(fastq)
 
-seq0=next(Sequences)
-
 def cut_kmer(seq, kmer_size):
     '''
     Cutting all the kmers from a sequence
@@ -97,74 +96,100 @@ def cut_kmer(seq, kmer_size):
     while index+kmer_size<=len(seq):
         yield seq[index:index+kmer_size]
         index+=1
+        
+def count_in_seq(kmer,seq):
+    count=0
+    for i in range(len(seq)-len(kmer)+1):
+        seq_slice=seq[i:i+len(kmer)]
+        if seq_slice==kmer:
+            count+=1
+#     print('c',count)
+    return count
 
+def build_seq_dict(seq, kmer_size):
+    '''
+    kmer_dict but for 1 read only
+    '''
+    kmer_dict={}
+    for kmer in cut_kmer(seq, kmer_size):
+#         print(seq.count(kmer))
+        if kmer not in list(kmer_dict.keys()):
+            kmer_dict[kmer]=count_in_seq(kmer,seq)
+            
+    return kmer_dict
 
 def build_kmer_dict(fastq_file, kmer_size):
     '''
     building a kmer dict
     '''
-    kmer_dict_ref={}
-    all_seq=read_fastq(fastq_file)
-    for seq in all_seq:
-        kmer_dict={}
-        for kmer in cut_kmer(seq, kmer_size):
-            if kmer not in list(kmer_dict.keys()) :
-                kmer_dict[kmer]=seq.count(kmer)
-
-        for kmer in list(kmer_dict.keys()):
-            if kmer not in list(kmer_dict_ref.keys()):
-                kmer_dict_ref[kmer]=kmer_dict[kmer]
+    kmer_dict={}
+    for seq in read_fastq(fastq_file):
+#         print('seq',seq)
+        seq_dict=build_seq_dict(seq, kmer_size)
+#         print('list of seq keys :',list(seq_dict.keys()) )
+        for kmer in list(seq_dict.keys()):
+#             print('kmer in keys :', kmer)
+            
+            if kmer not in list(kmer_dict.keys()):
+                kmer_dict[kmer]=seq_dict[kmer]
             else :
-                kmer_dict_ref[kmer]=kmer_dict_ref[kmer]+kmer_dict[kmer]
+                kmer_dict[kmer]=kmer_dict[kmer]+seq_dict[kmer]
 
-    return kmer_dict_ref
+    return kmer_dict
 
-kmer_dict_0=build_kmer_dict(fastq,kmer_length)
+kmer_dict=build_kmer_dict(fastq,kmer_length)
+# print(kmer_dict)
+# print(len(kmer_dict.keys()) == 4)
+# print ("TCA" in kmer_dict)
+# print ("CAG" in kmer_dict)
+# print ("AGA" in kmer_dict)
+# print ("GAG" in kmer_dict)
+# print (kmer_dict["AGA"] == 2)
 
-def build_predecesseurs(kmer, node_list):
-    precedents = [i+kmer[:-1] for i in ['A','T','C','G']]
-    predecesseurs=[]
-    for from_kmer in node_list :
-        if from_kmer in precedents :
-            predecesseurs.append(from_kmer)
-    return predecesseurs
+# def build_predecesseurs(kmer, node_list):
+#     precedents = [i+kmer[:-1] for i in ['A','T','C','G']]
+#     predecesseurs=[]
+#     for from_kmer in node_list :
+#         if from_kmer in precedents :
+#             predecesseurs.append(from_kmer)
+#     return predecesseurs
 
 def build_graph(kmer_dict):
     G=nx.DiGraph()
     kmers=list(kmer_dict.keys())
+    print('kmers',kmers)
     for kmer in kmers:
         G.add_node(kmer)
-
-    weights_dict=build_kmer_dict(fastq,kmer_length+1)
-
-    #noeuds de départ
-
-    starter_nodes=[]
-    for to_kmer in list(G.nodes):
-#         print(list(G.nodes))
-        predecesseurs=build_predecesseurs(to_kmer,list(G.nodes))
-
-        if predecesseurs ==[]:
-            starter_nodes.append(to_kmer)
-
-        else :
-#             print(predecesseurs)
-            for from_kmer in predecesseurs:
-                if from_kmer+to_kmer[-1] in list(weights_dict.keys()):
-                    w=weights_dict[from_kmer+to_kmer[-1]]
-                    G.add_edge(from_kmer, to_kmer, weight=w)
+        kmers_rm=kmers.remove(kmer)
+        for to_kmer in kmers:
+            if to_kmer[:-1]==kmer[1:]:
+                G.add_edge(kmer, to_kmer, weight=kmer_dict[kmer])
 
     l = nx.get_edge_attributes(G,'weight')
-    print(l)
+#     print(l)
     p=nx.spring_layout(G, scale=8)
-    nx.draw(G, pos=p, node_size=1)
+    nx.draw(G, pos=p, node_size=2)
     nx.draw_networkx_edge_labels(G, pos=p, edge_labels=l, font_size=6)
 
 
     plt.savefig('Graph.png')
     return G
 
-G1=build_graph(kmer_dict_0)
+# G1=build_graph(kmer_dict)
+file = open(os.path.abspath(os.path.join(os.path.dirname(__file__), "kmer.pck")),'rb')
+kmer_dict = pickle.load(file)
+print(kmer_dict)
+graph = build_graph(kmer_dict)
+print(graph.number_of_nodes() == 4)
+print(graph.number_of_edges() == 4)
+print(graph.nodes())
+print("AGA" in graph)
+print("GAG" in graph)
+print(graph.edges["AGA", "GAG"]['weight'] == 2)
+file.close()
+#==============================================================
+#Etape 2
+
 
 
 #==============================================================
