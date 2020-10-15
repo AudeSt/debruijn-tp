@@ -19,6 +19,8 @@ import sys
 from operator import itemgetter
 import networkx as nx
 import matplotlib
+import matplotlib.pyplot as plt
+matplotlib.use('Agg')
 random.seed(9001)
 
 __author__ = "Aude STERLIN"
@@ -63,7 +65,9 @@ def get_arguments():
 
 #==============================================================
 # Etape 1
-fastq=get_arguments().fastq_file
+args=get_arguments()
+fastq=args.fastq_file
+kmer_length=args.kmer_size
 
 def read_fastq(fastq_file):
     '''
@@ -78,7 +82,7 @@ def read_fastq(fastq_file):
     with open(fastq_file) as file :
         for line in file.readlines():
             if line[0] in ['A','T','C','G']:
-                yield line
+                yield line[:-1]
 
 Sequences = read_fastq(fastq)
 
@@ -88,22 +92,12 @@ def cut_kmer(seq, kmer_size):
     '''
     Cutting all the kmers from a sequence
     '''
-    last_index=-1
-    first_base_index=last_index+1
-    last_base_index=first_base_index+kmer_size
+    index=0
 #     print(kmer_size, first_base_index,last_base_index)
-    while last_base_index<=len(seq):
-        yield seq[first_base_index:last_base_index]
-        last_index=last_base_index-1
-        first_base_index=last_index+1
-        last_base_index=first_base_index+kmer_size
+    while index+kmer_size<=len(seq):
+        yield seq[index:index+kmer_size]
+        index+=1
 
-    yield seq[first_base_index:].replace('\n','')
-
-# cut=cut_kmer('AAuAAt',3)
-# print('1',next(cut))
-# print('2',next(cut))
-# print('3',next(cut))
 
 def build_kmer_dict(fastq_file, kmer_size):
     '''
@@ -111,10 +105,10 @@ def build_kmer_dict(fastq_file, kmer_size):
     '''
     kmer_dict_ref={}
     all_seq=read_fastq(fastq_file)
-    for seq in read_fastq(fastq_file):
+    for seq in all_seq:
         kmer_dict={}
         for kmer in cut_kmer(seq, kmer_size):
-            if kmer not in list(kmer_dict.keys())+[''] :
+            if kmer not in list(kmer_dict.keys()) :
                 kmer_dict[kmer]=seq.count(kmer)
 
         for kmer in list(kmer_dict.keys()):
@@ -125,8 +119,54 @@ def build_kmer_dict(fastq_file, kmer_size):
 
     return kmer_dict_ref
 
-        
-print(build_kmer_dict(fastq,5))
+kmer_dict_0=build_kmer_dict(fastq,kmer_length)
+
+def build_predecesseurs(kmer, node_list):
+    precedents = [i+kmer[:-1] for i in ['A','T','C','G']]
+    predecesseurs=[]
+    for from_kmer in node_list :
+        if from_kmer in precedents :
+            predecesseurs.append(from_kmer)
+    return predecesseurs
+
+def build_graph(kmer_dict):
+    G=nx.DiGraph()
+    kmers=list(kmer_dict.keys())
+    for kmer in kmers:
+        G.add_node(kmer)
+
+    weights_dict=build_kmer_dict(fastq,kmer_length+1)
+
+    #noeuds de départ
+
+    starter_nodes=[]
+    for to_kmer in list(G.nodes):
+#         print(list(G.nodes))
+        predecesseurs=build_predecesseurs(to_kmer,list(G.nodes))
+
+        if predecesseurs ==[]:
+            starter_nodes.append(to_kmer)
+
+        else :
+#             print(predecesseurs)
+            for from_kmer in predecesseurs:
+                if from_kmer+to_kmer[-1] in list(weights_dict.keys()):
+                    w=weights_dict[from_kmer+to_kmer[-1]]
+                    G.add_edge(from_kmer, to_kmer, weight=w)
+
+    l = nx.get_edge_attributes(G,'weight')
+    print(l)
+    p=nx.spring_layout(G, scale=8)
+    nx.draw(G, pos=p, node_size=1)
+    nx.draw_networkx_edge_labels(G, pos=p, edge_labels=l, font_size=6)
+
+
+    plt.savefig('Graph.png')
+    return G
+
+G1=build_graph(kmer_dict_0)
+
+
 #==============================================================
 # Main program
 #==============================================================
@@ -139,4 +179,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
